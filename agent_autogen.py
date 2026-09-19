@@ -39,28 +39,54 @@ tracker = UsageTracker(framework="AutoGen")
 # ---------------------------------------------------------------------------
 
 def _llm_config() -> dict:
-    """Return an AutoGen llm_config dict that routes through Helicone.
+    """Return an AutoGen llm_config dict for Azure OpenAI or OpenRouter.
 
     This function is already implemented for you. Study it to understand
     how AutoGen's llm_config dict maps onto the OpenAI client.
     """
-    _HELICONE_BASE = os.getenv("HELICONE_BASE_URL")
-    _OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-    _HELICONE_API_KEY = os.getenv("HELICONE_API_KEY")
-    return {
-        "config_list": [
-            {
-                "model": DEFAULT_MODEL,
-                "api_key": _OPENROUTER_API_KEY,
-                "base_url": _HELICONE_BASE,
-                "api_type": "openai",
-                "default_headers": {
-                    "Helicone-Auth": f"Bearer {_HELICONE_API_KEY}",
-                },
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    azure_api_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    azure_api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+    azure_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT") or DEFAULT_MODEL
+
+    helicone_base = os.getenv("HELICONE_BASE_URL") or os.getenv("OPENAI_BASE_URL")
+    openrouter_api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
+    helicone_api_key = os.getenv("HELICONE_API_KEY")
+
+    if azure_endpoint and azure_api_key and azure_api_version and azure_deployment:
+        return {
+            "config_list": [
+                {
+                    "model": azure_deployment,
+                    "api_key": azure_api_key,
+                    "base_url": azure_endpoint,
+                    "api_type": "openai",
+                }
+            ],
+            "temperature": 0,
+        }
+
+    if helicone_base and openrouter_api_key:
+        config: dict = {
+            "config_list": [
+                {
+                    "model": DEFAULT_MODEL,
+                    "api_key": openrouter_api_key,
+                    "base_url": helicone_base,
+                    "api_type": "openai",
+                }
+            ],
+            "temperature": 0,
+        }
+        if helicone_api_key:
+            config["config_list"][0]["default_headers"] = {
+                "Helicone-Auth": f"Bearer {helicone_api_key}",
             }
-        ],
-        "temperature": 0,
-    }
+        return config
+
+    raise EnvironmentError(
+        "Set either Azure OpenAI variables or OpenRouter/Helicone variables."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +162,7 @@ def make_proxy() -> UserProxyAgent:
         name="user_proxy",
         human_input_mode="NEVER",
         max_consecutive_auto_reply=15,
-        is_termination_msg=lambda msg: "DONE" in (msg.get("content", "") if isinstance(msg, dict) else str(msg)),
+        is_termination_msg=lambda msg: "DONE" in ((msg or {}).get("content") or "") if isinstance(msg, dict) else "DONE" in str(msg or ""),
         code_execution_config=False,
     )
     proxy.register_for_execution(name="read_file")(read_file)
@@ -157,12 +183,19 @@ def _record_usage(chat_result: autogen.ChatResult) -> None:
     per-step records using the message count as a proxy for step count.
     """
     usage = getattr(chat_result, "cost", {})
-    # usage dict shape: {"usage_including_cached_inference": {model: {prompt_tokens, ...}}}
-    for model_data in usage.get("usage_including_cached_inference", {}).values():
-        prompt = model_data.get("prompt_tokens", 0)
-        completion = model_data.get("completion_tokens", 0)
-        if prompt or completion:
-            tracker.record_step(prompt_tokens=prompt, completion_tokens=completion)
+    if not isinstance(usage, dict):
+        return
+
+    # usage dict shape may vary by AutoGen version.
+    model_usage = usage.get("usage_including_cached_inference", {})
+    if isinstance(model_usage, dict):
+        for model_data in model_usage.values():
+            if not isinstance(model_data, dict):
+                continue
+            prompt = int(model_data.get("prompt_tokens", 0) or 0)
+            completion = int(model_data.get("completion_tokens", 0) or 0)
+            if prompt or completion:
+                tracker.record_step(prompt_tokens=prompt, completion_tokens=completion)
 
 
 # ---------------------------------------------------------------------------
