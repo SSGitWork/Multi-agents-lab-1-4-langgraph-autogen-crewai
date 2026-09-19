@@ -19,6 +19,7 @@ Run:
 from __future__ import annotations
 
 import json
+import os
 import time
 from typing import Annotated, Literal
 
@@ -104,9 +105,12 @@ def agent_node(state: AgentState) -> dict:
     """
     from langchain_core.messages import SystemMessage
 
-    model = ChatOpenAI(openai_client=get_client(), model=DEFAULT_MODEL).bind_tools(
-        ALL_SCHEMAS
+    model = ChatOpenAI(
+        model=os.getenv("AZURE_OPENAI_DEPLOYMENT") or DEFAULT_MODEL,
+        api_key=os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY"),
+        base_url=os.getenv("AZURE_OPENAI_ENDPOINT"),
     )
+    model = model.bind_tools(ALL_SCHEMAS)
     messages = list(state["messages"])
     if not messages or messages[0].type != "system":
         messages.insert(0, SystemMessage(content=SYSTEM_PROMPT))
