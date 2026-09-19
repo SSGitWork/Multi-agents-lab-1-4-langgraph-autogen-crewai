@@ -102,7 +102,30 @@ def agent_node(state: AgentState) -> dict:
     Raises:
         NotImplementedError: Remove this line once you implement the function.
     """
-    raise NotImplementedError("Implement agent_node()")
+    from langchain_core.messages import SystemMessage
+
+    model = ChatOpenAI(openai_client=get_client(), model=DEFAULT_MODEL).bind_tools(
+        ALL_SCHEMAS
+    )
+    messages = list(state["messages"])
+    if not messages or messages[0].type != "system":
+        messages.insert(0, SystemMessage(content=SYSTEM_PROMPT))
+
+    start = time.time()
+    response = model.invoke(messages)
+    latency_s = time.time() - start
+    token_usage = response.response_metadata.get("token_usage", {})
+    tracker.record_step(
+        prompt_tokens=token_usage.get("prompt_tokens", 0),
+        completion_tokens=token_usage.get("completion_tokens", 0),
+        latency_s=latency_s,
+    )
+    content = getattr(response, "content", "") or ""
+    return {
+        "messages": [response],
+        "step_count": state["step_count"] + 1,
+        "done": "DONE" in content,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -83,7 +83,22 @@ def make_tools() -> list:
     Raises:
         NotImplementedError: Remove this line once you implement the function.
     """
-    raise NotImplementedError("Implement make_tools()")
+    @crewai_tool
+    def crewai_read_file(path: str) -> str:
+      """Read a file from the sandbox workspace."""
+      return read_file(path)
+
+    @crewai_tool
+    def crewai_write_file(path: str, content: str) -> str:
+      """Write content to a file in the sandbox workspace."""
+      return write_file(path, content)
+
+    @crewai_tool
+    def crewai_exec_python(code: str) -> str:
+      """Execute a Python code snippet in a sandboxed subprocess."""
+      return exec_python(code)
+
+    return [crewai_read_file, crewai_write_file, crewai_exec_python]
 
 
 def make_agent(tools: list) -> Agent:
@@ -106,7 +121,15 @@ def make_agent(tools: list) -> Agent:
     Raises:
         NotImplementedError: Remove this line once you implement the function.
     """
-    raise NotImplementedError("Implement make_agent()")
+    return Agent(
+      role="Coder Agent",
+      goal="Complete the assigned coding task correctly and efficiently.",
+      backstory="An expert Python developer who writes clean, tested code.",
+      tools=tools,
+      llm=_make_llm(),
+      verbose=True,
+      max_iter=15,
+    )
 
 
 def make_task(agent: Agent) -> Task:
@@ -125,7 +148,11 @@ def make_task(agent: Agent) -> Task:
     Raises:
         NotImplementedError: Remove this line once you implement the function.
     """
-    raise NotImplementedError("Implement make_task()")
+    return Task(
+      description=TASK_DESCRIPTION,
+      expected_output="The word_freq.py module is written, tested, and produces correct output.",
+      agent=agent,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -154,13 +181,9 @@ def run() -> str:
     agent = make_agent(tools)
     task = make_task(agent)
 
-    # TODO: Create a Crew with:
-    #   - agents=[agent]
-    #   - tasks=[task]
-    #   - verbose=True
-    # Call crew.kickoff() and store the result in `output`.
-    # Then call _record_usage(crew).
-    raise NotImplementedError("Create Crew and call kickoff() here")
+    crew = Crew(agents=[agent], tasks=[task], verbose=True)
+    output = crew.kickoff()
+    _record_usage(crew)
 
     tracker.print_summary()
     return str(output)

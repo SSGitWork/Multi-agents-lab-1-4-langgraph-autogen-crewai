@@ -100,7 +100,15 @@ def make_assistant() -> AssistantAgent:
     Raises:
         NotImplementedError: Remove this line once you implement the function.
     """
-    raise NotImplementedError("Implement make_assistant()")
+    agent = AssistantAgent(
+        name="coder_agent",
+        system_message=SYSTEM_PROMPT,
+        llm_config=_llm_config(),
+    )
+    agent.register_for_llm(name="read_file", description="Read a file from the sandbox workspace.")(read_file)
+    agent.register_for_llm(name="write_file", description="Write content to a file in the sandbox workspace.")(write_file)
+    agent.register_for_llm(name="exec_python", description="Execute a Python code snippet in a sandboxed subprocess. Returns stdout + stderr, truncated to 2 000 characters.")(exec_python)
+    return agent
 
 
 def make_proxy() -> UserProxyAgent:
@@ -124,7 +132,17 @@ def make_proxy() -> UserProxyAgent:
     Raises:
         NotImplementedError: Remove this line once you implement the function.
     """
-    raise NotImplementedError("Implement make_proxy()")
+    proxy = UserProxyAgent(
+        name="user_proxy",
+        human_input_mode="NEVER",
+        max_consecutive_auto_reply=15,
+        is_termination_msg=lambda msg: "DONE" in (msg.get("content", "") if isinstance(msg, dict) else str(msg)),
+        code_execution_config=False,
+    )
+    proxy.register_for_execution(name="read_file")(read_file)
+    proxy.register_for_execution(name="write_file")(write_file)
+    proxy.register_for_execution(name="exec_python")(exec_python)
+    return proxy
 
 
 # ---------------------------------------------------------------------------
@@ -156,12 +174,12 @@ def run() -> str:
     assistant = make_assistant()
     proxy = make_proxy()
 
-    # TODO: Call proxy.initiate_chat() with:
-    #   - recipient=assistant
-    #   - message=TASK_DESCRIPTION
-    #   - max_turns=15
-    # Store the result in `result`, then call _record_usage(result).
-    raise NotImplementedError("Call proxy.initiate_chat() here")
+    result = proxy.initiate_chat(
+        recipient=assistant,
+        message=TASK_DESCRIPTION,
+        max_turns=15,
+    )
+    _record_usage(result)
 
     tracker.print_summary()
 
