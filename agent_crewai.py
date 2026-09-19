@@ -23,9 +23,8 @@ import os
 import time
 
 from crewai import Agent, Crew, Task
+from crewai import LLM
 from crewai.tools import tool as crewai_tool
-from langchain_openai import ChatOpenAI
-
 from llm_client import DEFAULT_MODEL
 from task import TASK_DESCRIPTION
 from tools.code_tools import exec_python, read_file, write_file
@@ -41,13 +40,45 @@ tracker = UsageTracker(framework="CrewAI")
 # ---------------------------------------------------------------------------
 
 
-def _make_llm() -> ChatOpenAI:
-    _HELICONE_API_KEY = os.getenv("HELICONE_API_KEY")
+def _make_llm() -> LLM:
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
+    azure_api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    azure_api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+    azure_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT") or DEFAULT_MODEL
 
-    return ChatOpenAI(
-        model=DEFAULT_MODEL,
-        default_headers={"Helicone-Auth": f"Bearer {_HELICONE_API_KEY}"},
-        temperature=0,
+    helicone_base = os.getenv("HELICONE_BASE_URL") or os.getenv("OPENAI_BASE_URL")
+    openrouter_api_key = (
+        os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
+    )
+
+    # Convert the Azure OpenAI v1 base URL used by other frameworks
+    # into the endpoint format CrewAI's native Azure provider expects.
+    if azure_endpoint.endswith("/openai/v1"):
+        azure_endpoint = azure_endpoint[:-len("/openai/v1")]
+
+    if all([azure_endpoint, azure_api_key, azure_api_version, azure_deployment]):
+        deployment_endpoint = (
+            f"{azure_endpoint}/openai/deployments/{azure_deployment}"
+        )
+
+        return LLM(
+            model=f"azure/{azure_deployment}",
+            api_key=azure_api_key,
+            endpoint=deployment_endpoint,
+            api_version=azure_api_version,
+            temperature=0,
+        )
+
+    if helicone_base and openrouter_api_key:
+        return LLM(
+            model=DEFAULT_MODEL,
+            api_key=openrouter_api_key,
+            base_url=helicone_base,
+            temperature=0,
+        )
+
+    raise EnvironmentError(
+        "Set either Azure OpenAI variables or OpenRouter/Helicone variables."
     )
 
 
