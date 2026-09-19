@@ -125,10 +125,11 @@ def agent_node(state: AgentState) -> dict:
         latency_s=latency_s,
     )
     content = getattr(response, "content", "") or ""
+    done = "DONE" in content or not getattr(response, "tool_calls", None)
     return {
         "messages": [response],
         "step_count": state["step_count"] + 1,
-        "done": "DONE" in content,
+        "done": done,
     }
 
 
